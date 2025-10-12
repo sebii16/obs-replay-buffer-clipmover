@@ -5,8 +5,10 @@
 #include <stdio.h>
 #include <tchar.h>
 #include <wchar.h>
+#include <limits.h>
+#include <stdlib.h>
 
-#pragma comment(lib, "psapi.lib")
+#pragma comment(lib, "user32.lib")
 
 #ifndef _countof
   #define _countof(arr) (sizeof(arr) / sizeof((arr)[0]))
@@ -17,13 +19,8 @@
 #endif
 
 #define SLEEP2S() Sleep(2000)
-#define DEFAULT_MOVE_DELAY 50
-#define VERSION "v0.2.0"
-
-int dir_exists(const wchar_t *path) {
-  DWORD attr = GetFileAttributesW(path);
-  return (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY));
-}
+#define DEFAULT_MOVE_DELAY 200
+#define VERSION "v0.2.1"
 
 int create_dir(const wchar_t *wpath) {
   wchar_t path_copy[MAX_PATH];
@@ -89,6 +86,8 @@ const wchar_t *get_game(void) {
     return L"Minecraft";
   } else if (_wcsicmp(game, L"main.exe") == 0) {
     return L"Main";
+  } else if (_wcsicmp(game, L"skate.exe") == 0) {
+    return L"Skate";
   } else {
     return L"misc";
   }
@@ -98,7 +97,7 @@ error:
   return L"misc";
 }
 
-void handle_new_clips(const wchar_t *path, size_t path_len, HANDLE *hDir, int delay, const char *argv0) {
+void move_new_clips(const wchar_t *path, HANDLE *hDir, int delay, const char *argv0) {
   BYTE buffer[4096];
   DWORD bytes_returned;
   OVERLAPPED ovl = {0};
@@ -128,7 +127,7 @@ void handle_new_clips(const wchar_t *path, size_t path_len, HANDLE *hDir, int de
             if (MoveFileW(clip_path, out_path)) {
               wprintf(L"moved clip to %ls\n", out_path);
             } else {
-              printf("moving clip failed. try increasing the delay by ~50 (./%s %ls %d)", argv0, path, delay + 50);
+              printf("moving clip failed. try increasing the delay by ~50 (./%s %ls %d)\n", argv0, path, delay + 50);
             }
           }
         }
@@ -139,9 +138,6 @@ void handle_new_clips(const wchar_t *path, size_t path_len, HANDLE *hDir, int de
       }
     }
   }
-
-  CloseHandle(hEvent);
-  CloseHandle(*hDir);
 }
 
 int to_int(const char *s) {
@@ -156,10 +152,9 @@ int to_int(const char *s) {
 
   if (errno != 0 || *p != '\0' || conv > INT_MAX || conv < INT_MIN) {
     return -1;
-  } else {
-    num = (int)conv;
-    return num;
   }
+  num = (int)conv;
+  return num;
 }
 
 int main(int argc, char **argv) {
@@ -171,36 +166,30 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  int delay_ms = -1;
+  int delay_ms = DEFAULT_MOVE_DELAY;
 
   if (argc >= 3) {
     delay_ms = to_int(argv[2]);
+    if (delay_ms == -1) {
+      delay_ms = DEFAULT_MOVE_DELAY;
+    }
   }
 
-  size_t wpath_len = strlen(argv[1]) + 1;
-  wchar_t wpath[wpath_len];
-  if (!MultiByteToWideChar(CP_UTF8, 0, argv[1], -1, wpath, wpath_len)) {
+  wchar_t wpath[MAX_PATH];
+  if (!MultiByteToWideChar(CP_UTF8, 0, argv[1], -1, wpath, _countof(wpath))) {
     puts("fatal error occurred");
     SLEEP2S();
     return 1;
   }
-  /*
-  if (!dir_exists(wpath)) {
-    wprintf(L"%ls is invalid.\n", wpath);
-    SLEEP2S();
-    return 1;
-  }
-  */
 
   HANDLE hDir = CreateFileW(wpath, FILE_LIST_DIRECTORY, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, NULL);
   if (hDir == INVALID_HANDLE_VALUE) {
-    wprintf(L"failed to open %ls (invalid?).\n", wpath);
+    wprintf(L"failed to open directory %ls (invalid?)\n", wpath);
     SLEEP2S();
     return 1;
   }
 
   wprintf(L"clip directory: %ls\n", wpath);
-  delay_ms = delay_ms == -1 ? DEFAULT_MOVE_DELAY : delay_ms;
   printf("move delay: %dms\n", delay_ms);
   if (delay_ms < DEFAULT_MOVE_DELAY) {
     printf("warning: if you have a bad pc the delay you set might be too low, %dms+ is recommended\n", DEFAULT_MOVE_DELAY);
@@ -208,7 +197,7 @@ int main(int argc, char **argv) {
 
   putc('\n', stdout);
 
-  handle_new_clips(wpath, wpath_len, &hDir, delay_ms, argv[0]);
+  move_new_clips(wpath, &hDir, delay_ms, argv[0]);
 
   return 0;
 }
