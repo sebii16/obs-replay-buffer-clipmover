@@ -1,12 +1,29 @@
 #define WIN32_LEAN_AND_MEAN
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <tchar.h>
 #include <windows.h>
-#include <psapi.h>
+#include <Psapi.h>
+#include <shellapi.h>
+#include <stdio.h>
+#include <tchar.h>
+#include <wchar.h>
 
-#define WAIT_BEFORE_EXITING() Sleep(2000)
+#pragma comment(lib, "psapi.lib")
+
+#ifndef _countof
+  #define _countof(arr) (sizeof(arr) / sizeof((arr)[0]))
+#endif
+
+#ifndef _TRUNCATE
+  #define _TRUNCATE ((size_t)-1)
+#endif
+
+#define SLEEP2S() Sleep(2000)
+#define DEFAULT_MOVE_DELAY 50
+#define VERSION "v0.2.0"
+
+int dir_exists(const wchar_t *path) {
+  DWORD attr = GetFileAttributesW(path);
+  return (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY));
+}
 
 int create_dir(const wchar_t *wpath) {
   wchar_t path_copy[MAX_PATH];
@@ -14,10 +31,12 @@ int create_dir(const wchar_t *wpath) {
 
   if (*path_copy) {
     for (wchar_t *p = path_copy; *p; ++p)
-      if (*p == L'/') *p = L'\\';
+      if (*p == L'/')
+        *p = L'\\';
 
     wchar_t *last_bslash = wcsrchr(path_copy, L'\\');
-    if (last_bslash) *last_bslash = '\0';
+    if (last_bslash)
+      *last_bslash = '\0';
 
     if (CreateDirectoryW(path_copy, NULL)) {
       wprintf(L"%ls has been created\n", path_copy);
@@ -33,86 +52,163 @@ int create_dir(const wchar_t *wpath) {
   return 1;
 }
 
+const wchar_t *get_game(void) {
+  HWND hwnd = GetForegroundWindow();
+  if (!hwnd)
+    goto error;
 
+  DWORD pid = 0;
+  GetWindowThreadProcessId(hwnd, &pid);
 
-int main(int argc, char **argv) {
-  if (argc < 2) {
-    printf("no clip directory specified. exiting.\n");
-    WAIT_BEFORE_EXITING();
-    return 1;
+  HANDLE hProc = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+  if (!hProc)
+    goto error;
+
+  wchar_t game[MAX_PATH];
+  game[0] = '\0';
+  if (!GetModuleBaseNameW(hProc, NULL, game, _countof(game))) {
+    CloseHandle(hProc);
+    goto error;
   }
 
-  wchar_t wpath[128];
-  MultiByteToWideChar(CP_UTF8, 0, argv[1], -1, wpath, _countof(wpath));
+  CloseHandle(hProc);
 
-  HANDLE dir_handle =
-      CreateFileW(wpath, FILE_LIST_DIRECTORY,
-                  FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
-                  OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
-
-  if (dir_handle == INVALID_HANDLE_VALUE) {
-    wprintf(L"failed to open %ls (error %lu)\n", wpath, GetLastError());
-    return 1;
+  if (_wcsicmp(game, L"FortniteClient-Win64-Shipping_EAC_EOS.exe") == 0 ||
+      _wcsicmp(game, L"FortniteClient-Win64-Shipping.exe") == 0 ||
+      _wcsicmp(game, L"FortniteLauncher.exe") == 0) {
+    return L"Fortnite";
+  } else if (_wcsicmp(game, L"FC26.exe") == 0) {
+    return L"FC26";
+  } else if (_wcsicmp(game, L"FC25.exe") == 0) {
+    return L"FC25";
+  } else if (_wcsicmp(game, L"cs2.exe") == 0) {
+    return L"CS2";
+  } else if (_wcsicmp(game, L"VALORANT-Win64-Shipping.exe") == 0) {
+    return L"Valorant";
+  } else if (_wcsicmp(game, L"Minecraft.exe") == 0) {
+    return L"Minecraft";
+  } else if (_wcsicmp(game, L"main.exe") == 0) {
+    return L"Main";
+  } else {
+    return L"misc";
   }
 
-  printf("new clips in %ls will get organized while running\n", wpath);
+error:
+  puts("error getting game name");
+  return L"misc";
+}
 
-  BYTE buffer[1024];
-  DWORD bytesReturned;
+void handle_new_clips(const wchar_t *path, size_t path_len, HANDLE *hDir, int delay, const char *argv0) {
+  BYTE buffer[4096];
+  DWORD bytes_returned;
+  OVERLAPPED ovl = {0};
+  HANDLE hEvent = CreateEventW(NULL, FALSE, FALSE, NULL);
+  ovl.hEvent = hEvent;
 
   while (1) {
-    if (ReadDirectoryChangesW(dir_handle, buffer, sizeof(buffer), FALSE, FILE_NOTIFY_CHANGE_FILE_NAME, &bytesReturned, NULL, NULL)) {
-      FILE_NOTIFY_INFORMATION *info = (FILE_NOTIFY_INFORMATION *)buffer;
-      do {
-        wchar_t full_path[MAX_PATH];
-        swprintf(full_path, _countof(full_path), L"%ls\\%ls", wpath, info->FileName);
+    if (!ReadDirectoryChangesW(*hDir, buffer, sizeof(buffer), FALSE, FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_SIZE, &bytes_returned, &ovl, NULL)) {
+      break;
+    }
 
-        if (info->Action == FILE_ACTION_ADDED) {
-          wchar_t exe_name[MAX_PATH];
-          HWND hwnd = GetForegroundWindow();
-          if (hwnd) {
-            DWORD pid = 0;
-            GetWindowThreadProcessId(hwnd, &pid);
+    DWORD wait = WaitForSingleObject(hEvent, INFINITE);
+    if (wait == WAIT_OBJECT_0) {
+      FILE_NOTIFY_INFORMATION *fni = (FILE_NOTIFY_INFORMATION *)buffer;
+      while (1) {
+        fni->FileName[fni->FileNameLength / sizeof(WCHAR)] = L'\0';
 
-            HANDLE proccess_handle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
-            if (proccess_handle) {
-              if (!GetModuleBaseNameW(proccess_handle, NULL, exe_name, MAX_PATH)) {
-                //
-              }
-              CloseHandle(proccess_handle);
-            }
-          }
+        if (fni->Action == FILE_ACTION_ADDED) {
+          wchar_t out_path[MAX_PATH];
+          swprintf_s(out_path, MAX_PATH, L"%ls\\%ls\\%ls", path, get_game(), fni->FileName);
+          wchar_t clip_path[MAX_PATH];
+          swprintf_s(clip_path, _countof(clip_path), L"%ls\\%ls", path, fni->FileName);
 
-          if (*exe_name) {
-            wchar_t dest_path[MAX_PATH];
-            swprintf(dest_path, _countof(dest_path), L"%ls\\%ls\\%ls", wpath, exe_name, info->FileName);
-
-            Sleep(1000);
-
-            if (create_dir(dest_path)) {
-              if (MoveFileW(full_path, dest_path)) {
-                wprintf(L"%ls -> %ls\n", full_path, dest_path);
-              } else {
-                printf("moving file failed, try increasing the delay\n");
-              }
+          if (create_dir(out_path)) {
+            if (delay > 0)
+              Sleep(delay);
+            if (MoveFileW(clip_path, out_path)) {
+              wprintf(L"moved clip to %ls\n", out_path);
+            } else {
+              printf("moving clip failed. try increasing the delay by ~50 (./%s %ls %d)", argv0, path, delay + 50);
             }
           }
         }
 
-        info = info->NextEntryOffset
-                   ? (FILE_NOTIFY_INFORMATION *)((BYTE *)info +
-                                                 info->NextEntryOffset)
-                   : NULL;
-				  
-      } while (info);
-    } else {
-      printf("fatal error occurred. exiting.");
-      WAIT_BEFORE_EXITING();
-      return 1;
+        if (fni->NextEntryOffset == 0)
+          break;
+        fni = (FILE_NOTIFY_INFORMATION *)((BYTE *)fni + fni->NextEntryOffset);
+      }
     }
   }
 
-  CloseHandle(dir_handle);
+  CloseHandle(hEvent);
+  CloseHandle(*hDir);
+}
+
+int to_int(const char *s) {
+  if (!s || *s == '\0')
+    return -1;
+
+  int num;
+  char *p;
+
+  errno = 0;
+  long conv = strtol(s, &p, 10);
+
+  if (errno != 0 || *p != '\0' || conv > INT_MAX || conv < INT_MIN) {
+    return -1;
+  } else {
+    num = (int)conv;
+    return num;
+  }
+}
+
+int main(int argc, char **argv) {
+  printf("clipmover %s by sebii16 (github.com/sebii16)\n\n", VERSION);
+
+  if (argc < 2) {
+    printf("no directory defined. use %s <path>\n", argv[0]);
+    SLEEP2S();
+    return 1;
+  }
+
+  int delay_ms = -1;
+
+  if (argc >= 3) {
+    delay_ms = to_int(argv[2]);
+  }
+
+  size_t wpath_len = strlen(argv[1]) + 1;
+  wchar_t wpath[wpath_len];
+  if (!MultiByteToWideChar(CP_UTF8, 0, argv[1], -1, wpath, wpath_len)) {
+    puts("fatal error occurred");
+    SLEEP2S();
+    return 1;
+  }
+  /*
+  if (!dir_exists(wpath)) {
+    wprintf(L"%ls is invalid.\n", wpath);
+    SLEEP2S();
+    return 1;
+  }
+  */
+
+  HANDLE hDir = CreateFileW(wpath, FILE_LIST_DIRECTORY, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, NULL);
+  if (hDir == INVALID_HANDLE_VALUE) {
+    wprintf(L"failed to open %ls (invalid?).\n", wpath);
+    SLEEP2S();
+    return 1;
+  }
+
+  wprintf(L"clip directory: %ls\n", wpath);
+  delay_ms = delay_ms == -1 ? DEFAULT_MOVE_DELAY : delay_ms;
+  printf("move delay: %dms\n", delay_ms);
+  if (delay_ms < DEFAULT_MOVE_DELAY) {
+    printf("warning: if you have a bad pc the delay you set might be too low, %dms+ is recommended\n", DEFAULT_MOVE_DELAY);
+  }
+
+  putc('\n', stdout);
+
+  handle_new_clips(wpath, wpath_len, &hDir, delay_ms, argv[0]);
 
   return 0;
 }
