@@ -16,7 +16,7 @@ debug: $(BUILD_DIR)
 	$(CC) $(SRC) $(CFLAGS) /Od /Zi /Fo$(BUILD_DIR)\ /Fd$(BUILD_DIR)\ /Fe:$(OUT) /link /DEBUG:FULL /PDB:$(BUILD_DIR)\$(TARGET:.exe=.pdb)
 
 release: $(BUILD_DIR)
-	$(CC) $(SRC) $(CFLAGS) /O2 /Ot /Oi /GL /fp:fast /arch:AVX2 /DNDEBUG /Fo$(BUILD_DIR)\ /Fe:$(OUT) /link /LTCG /INCREMENTAL:NO /OPT:REF /OPT:ICF
+	$(CC) $(SRC) $(CFLAGS) /O2 /GL /DNDEBUG /Fo$(BUILD_DIR)\ /Fe:$(OUT) /link /LTCG /INCREMENTAL:NO /OPT:REF /OPT:ICF
 
 clean:
 	if exist $(BUILD_DIR) rmdir /s /q $(BUILD_DIR)

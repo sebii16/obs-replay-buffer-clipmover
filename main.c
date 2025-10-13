@@ -1,14 +1,14 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <Psapi.h>
-#include <shellapi.h>
 #include <stdio.h>
-#include <tchar.h>
 #include <wchar.h>
 #include <limits.h>
 #include <stdlib.h>
 
-#pragma comment(lib, "user32.lib")
+#ifdef _MSC_VER
+  #pragma comment(lib, "user32.lib")
+#endif
 
 #ifndef _countof
   #define _countof(arr) (sizeof(arr) / sizeof((arr)[0]))
@@ -71,8 +71,7 @@ const wchar_t *get_game(void) {
   CloseHandle(hProc);
 
   if (_wcsicmp(game, L"FortniteClient-Win64-Shipping_EAC_EOS.exe") == 0 ||
-      _wcsicmp(game, L"FortniteClient-Win64-Shipping.exe") == 0 ||
-      _wcsicmp(game, L"FortniteLauncher.exe") == 0) {
+      _wcsicmp(game, L"FortniteClient-Win64-Shipping.exe") == 0) {
     return L"Fortnite";
   } else if (_wcsicmp(game, L"FC26.exe") == 0) {
     return L"FC26";
@@ -141,8 +140,9 @@ void move_new_clips(const wchar_t *path, HANDLE *hDir, int delay, const char *ar
 }
 
 int to_int(const char *s) {
-  if (!s || *s == '\0')
+  if (!s || *s == '\0') {
     return -1;
+  }
 
   int num;
   char *p;
