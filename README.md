@@ -11,29 +11,29 @@ You can download a **precompiled executable** from the **[Releases](https://gith
 
 
 ### Option 2 - Build It Yourself
-```console
+```
 git clone https://github.com/sebii16/obs-replay-buffer-clipmover.git
 cd obs-replay-buffer-clipmover
 ```
 
 - Using **nmake** (recommended)
-```console
+```
 nmake
 ```
 
 - Manually using **MSVC**
-```console
+```
 cl main.c /nologo /W4 /WX /std:c11 /O2 /GL /DNDEBUG /Fe:clipmover.exe /link /LTCG /INCREMENTAL:NO /OPT:REF /OPT:ICF
 ```
 
 - Or using **GCC**
-```console
+```
 gcc main.c -std=c11 -Wall -Wextra -Werror -O2 -flto -DNDEBUG -s -o clipmover.exe -luser32 -lpsapi
 ```
 
 ## Example Usage
 
-```console
+```
 .\clipmover.exe c:\clips
 ```
 

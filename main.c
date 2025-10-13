@@ -19,8 +19,8 @@
 #endif
 
 #define SLEEP2S() Sleep(2000)
-#define DEFAULT_MOVE_DELAY 200
-#define VERSION "v0.2.1"
+#define DEFAULT_MOVE_DELAY 300
+#define VERSION "v1.0.0"
 
 int create_dir(const wchar_t *wpath) {
   wchar_t path_copy[MAX_PATH];
@@ -49,51 +49,81 @@ int create_dir(const wchar_t *wpath) {
   return 1;
 }
 
-const wchar_t *get_game(void) {
+const wchar_t *get_game_name(void) {
   HWND hwnd = GetForegroundWindow();
   if (!hwnd)
     goto error;
 
   DWORD pid = 0;
   GetWindowThreadProcessId(hwnd, &pid);
-
-  HANDLE hProc = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
-  if (!hProc)
+  if (!pid) {
     goto error;
+  }
 
-  wchar_t game[MAX_PATH];
-  game[0] = '\0';
-  if (!GetModuleBaseNameW(hProc, NULL, game, _countof(game))) {
+  HANDLE hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+  if (!hProc) {
+    goto error;
+  }
+
+  wchar_t game_path[MAX_PATH];
+  //if (!GetModuleBaseNameW(hProc, NULL, game_path, MAX_PATH)) { this can fail with some games because of their anticheat
+  if (!GetProcessImageFileNameW(hProc, game_path, MAX_PATH)) {
     CloseHandle(hProc);
     goto error;
   }
 
   CloseHandle(hProc);
 
-  if (_wcsicmp(game, L"FortniteClient-Win64-Shipping_EAC_EOS.exe") == 0 ||
-      _wcsicmp(game, L"FortniteClient-Win64-Shipping.exe") == 0) {
-    return L"Fortnite";
-  } else if (_wcsicmp(game, L"FC26.exe") == 0) {
-    return L"FC26";
-  } else if (_wcsicmp(game, L"FC25.exe") == 0) {
-    return L"FC25";
-  } else if (_wcsicmp(game, L"cs2.exe") == 0) {
-    return L"CS2";
-  } else if (_wcsicmp(game, L"VALORANT-Win64-Shipping.exe") == 0) {
-    return L"Valorant";
-  } else if (_wcsicmp(game, L"Minecraft.exe") == 0) {
-    return L"Minecraft";
-  } else if (_wcsicmp(game, L"main.exe") == 0) {
-    return L"Main";
-  } else if (_wcsicmp(game, L"skate.exe") == 0) {
-    return L"Skate";
-  } else {
-    return L"misc";
+  const wchar_t *exe = wcsrchr(game_path, '\\');
+  exe++;
+
+// helper macro
+#define WCSICMP(s1, s2, rval)      \
+  if (_wcsicmp((s1), (s2)) == 0) { \
+    return rval;                   \
   }
+
+  switch (towupper(exe[0])) {
+  case 'A':
+    WCSICMP(exe, L"ACU.exe", L"Assassins Creed Unity");
+    WCSICMP(exe, L"ACShadows.exe", L"Assassins Creed Shadows");
+    break;
+  case 'C':
+    WCSICMP(exe, L"csgo.exe", L"CSGO");
+    WCSICMP(exe, L"cs2.exe", L"CS2");
+    break;
+  case 'F':
+    WCSICMP(exe, L"FortniteClient-Win64-Shipping.exe", L"Fortnite")
+    WCSICMP(exe, L"FortniteClient-Win64-Shipping_EAC_EOS.exe", L"Fortnite");
+    WCSICMP(exe, L"FortniteLauncher.exe", L"Fortnite");
+    WCSICMP(exe, L"FC26.exe", L"FC26");
+    WCSICMP(exe, L"FC26_Trial.exe", L"FC26");
+    WCSICMP(exe, L"FC25.exe", L"FC25");
+    WCSICMP(exe, L"FC24.exe", L"FC24");
+    WCSICMP(exe, L"FIFA23.exe", L"FIFA23");
+    WCSICMP(exe, L"FIFA22.exe", L"FIFA22");
+    break;
+  case 'G':
+    WCSICMP(exe, L"GTA5_Enhanced.exe", L"GTA5");
+    WCSICMP(exe, L"GTAV.exe", L"GTA5");
+    WCSICMP(exe, L"GTA5.exe", L"GTA5");
+    break;
+  case 'S':
+    WCSICMP(exe, L"Skate.exe", L"Skate");
+    break;
+  case 'V':
+    WCSICMP(exe, L"VALORANT.exe", L"Valorant");
+    WCSICMP(exe, L"VALORANT-Win64-Shipping.exe", L"Valorant");
+    break;
+  }
+
+#undef WCSICMP
+
+  return exe;
 
 error:
   puts("error getting game name");
-  return L"misc";
+  return L"unknown";
 }
 
 void move_new_clips(const wchar_t *path, HANDLE *hDir, int delay, const char *argv0) {
@@ -116,7 +146,7 @@ void move_new_clips(const wchar_t *path, HANDLE *hDir, int delay, const char *ar
 
         if (fni->Action == FILE_ACTION_ADDED) {
           wchar_t out_path[MAX_PATH];
-          swprintf_s(out_path, MAX_PATH, L"%ls\\%ls\\%ls", path, get_game(), fni->FileName);
+          swprintf_s(out_path, MAX_PATH, L"%ls\\%ls\\%ls", path, get_game_name(), fni->FileName);
           wchar_t clip_path[MAX_PATH];
           swprintf_s(clip_path, _countof(clip_path), L"%ls\\%ls", path, fni->FileName);
 
@@ -126,7 +156,7 @@ void move_new_clips(const wchar_t *path, HANDLE *hDir, int delay, const char *ar
             if (MoveFileW(clip_path, out_path)) {
               wprintf(L"moved clip to %ls\n", out_path);
             } else {
-              printf("moving clip failed. try increasing the delay by ~50 (./%s %ls %d)\n", argv0, path, delay + 50);
+              wprintf(L"moving clip failed. try increasing the delay by ~100 (./%hs %ls %d)\n", argv0, path, delay + 100);
             }
           }
         }
