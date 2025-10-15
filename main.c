@@ -207,18 +207,22 @@ int main(int argc, char **argv) {
     wprintf(L"%ls doesn't exist. Trying to create...\n", CONFIG_FILE);
     printf("Enter your clip folder: ");
 
-    if (wscanf(L"%259ls", clip_dir) == 1) {
-      FILE *fp = _wfopen(CONFIG_FILE, L"w");
-      if (!fp) {
-        perror("_wfopen");
-        Sleep(2000);
-        return 1;
-      }
-
-      fwprintf(fp, L"[clipmover]\nclip_folder = %ls\nmove_delay = %d", clip_dir, delay_ms);
-      fclose(fp);
-      wprintf(L"%ls has been created\n\n", CONFIG_FILE);
+    if (wscanf(L"%259ls", clip_dir) != 1) {
+      puts("Error getting input. Exiting...");
+      Sleep(2000);
+      return 1;
     }
+
+    FILE *fp = _wfopen(CONFIG_FILE, L"w");
+    if (!fp) {
+      perror("_wfopen");
+      Sleep(2000);
+      return 1;
+    }
+
+    fwprintf(fp, L"[clipmover]\nclip_folder = %ls\nmove_delay = %d", clip_dir, delay_ms);
+    fclose(fp);
+    wprintf(L"%ls has been created\n\n", CONFIG_FILE);
   }
 
   if (config_exists) {
