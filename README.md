@@ -1,4 +1,4 @@
-# OBS Replay Buffer clipmover
+# OBS Replay Buffer Clipmover
 
 **This program watches your clip folder for newly added clips and automatically moves them into the correct subfolder based on the focused window.**
 
@@ -7,7 +7,7 @@ I made this for **personal use** and there might be an OBS plugin for this, but 
 ## Installation
 
 ### Option 1 - Prebuilt Binary
-You can download a **precompiled executable** from the **[Releases](https://github.com/sebii16/obs-replay-buffer-clipmover/releases)** page. (Coming soon!)
+You can download a **precompiled executable** from the **[Releases](https://github.com/sebii16/obs-replay-buffer-clipmover/releases)** page.
 
 
 ### Option 2 - Build It Yourself
@@ -21,26 +21,12 @@ cd obs-replay-buffer-clipmover
 nmake
 ```
 
-- Manually using **MSVC**
+- Manually using **CL**
 ```
-cl main.c /nologo /W4 /WX /std:c11 /O2 /GL /DNDEBUG /Fe:clipmover.exe /link /LTCG /INCREMENTAL:NO /OPT:REF /OPT:ICF
+cl main.c /nologo /W4 /WX /std:c11 /O2 /MT /DNDEBUG user32.lib /Fobuild\ /Fe:build\clipmover.exe /link /INCREMENTAL:NO /OPT:REF /OPT:ICF
 ```
 
 - Or using **GCC**
 ```
-gcc main.c -std=c11 -Wall -Wextra -Werror -O2 -flto -DNDEBUG -s -o clipmover.exe -luser32 -lpsapi
-```
-
-## Example Usage
-
-```
-.\clipmover.exe c:\clips
-```
-
-**You can create a shortcut so you don't have to run it manually every time.**
-
-Also if you use **Windows Terminal** and care about **minimum RAM usage** while gaming, run it through **conhost** as **WT** adds about **15-25 MB** of unnecessary RAM overhead.
-Use this as **"Target"** in your shortcut:
-```
-conhost -- .\clipmover.exe c:\clips
+gcc main.c -std=c11 -Wall -Wextra -Werror -O2 -DNDEBUG -s -o clipmover.exe -luser32 -lpsapi
 ```

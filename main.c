@@ -1,14 +1,10 @@
+#define _CRT_SECURE_NO_WARNINGS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <Psapi.h>
 #include <stdio.h>
 #include <wchar.h>
-#include <limits.h>
 #include <stdlib.h>
-
-#ifdef _MSC_VER
-  #pragma comment(lib, "user32.lib")
-#endif
+#include <Psapi.h>
 
 #ifndef _countof
   #define _countof(arr) (sizeof(arr) / sizeof((arr)[0]))
@@ -18,38 +14,39 @@
   #define _TRUNCATE ((size_t)-1)
 #endif
 
-#define SLEEP2S() Sleep(2000)
 #define DEFAULT_MOVE_DELAY 300
-#define VERSION "v1.0.0"
+#define VERSION "v1.1.0"
+#define CONFIG_FILE L".\\filemover.ini"
 
-int create_dir(const wchar_t *wpath) {
+int create_dir(const wchar_t *clip_dir) {
   wchar_t path_copy[MAX_PATH];
-  wcsncpy_s(path_copy, _countof(path_copy), wpath, _TRUNCATE);
+  wcsncpy_s(path_copy, _countof(path_copy), clip_dir, _TRUNCATE);
 
-  if (*path_copy) {
-    for (wchar_t *p = path_copy; *p; ++p)
-      if (*p == L'/')
-        *p = L'\\';
+  if (!*path_copy) {
+    return 0;
+  }
 
-    wchar_t *last_bslash = wcsrchr(path_copy, L'\\');
-    if (last_bslash)
-      *last_bslash = '\0';
+  for (wchar_t *c = path_copy; *c; ++c) {
+    if (*c == L'/')
+      *c = L'\\'; // turn forward slashes into backslashes
+  }
 
-    if (CreateDirectoryW(path_copy, NULL)) {
-      wprintf(L"%ls has been created\n", path_copy);
-    } else {
-      DWORD err = GetLastError();
-      if (err != 183) {
-        wprintf(L"%ls couldn't be created (error %lu)\n", path_copy, err);
-        return 0;
-      }
+  wchar_t *last_bslash = wcsrchr(path_copy, L'\\');
+  if (last_bslash)
+    *last_bslash = L'\0';
+
+  if (!CreateDirectoryW(path_copy, NULL)) {
+    DWORD err = GetLastError();
+    if (err != 183) {
+      wprintf(L"Failed to create %ls (error %lu)\n", path_copy, err);
+      return 0;
     }
   }
 
   return 1;
 }
 
-const wchar_t *get_game_name(void) {
+const wchar_t *get_current_game(void) {
   HWND hwnd = GetForegroundWindow();
   if (!hwnd)
     goto error;
@@ -66,75 +63,81 @@ const wchar_t *get_game_name(void) {
   }
 
   wchar_t game_path[MAX_PATH];
-  //if (!GetModuleBaseNameW(hProc, NULL, game_path, MAX_PATH)) { this can fail with some games because of their anticheat
-  if (!GetProcessImageFileNameW(hProc, game_path, MAX_PATH)) {
+  if (!GetProcessImageFileNameW(hProc, game_path, _countof(game_path))) {
     CloseHandle(hProc);
     goto error;
   }
+  game_path[_countof(game_path) - 1] = L'\0';
 
   CloseHandle(hProc);
 
-  const wchar_t *exe = wcsrchr(game_path, '\\');
-  exe++;
+  wchar_t *game_name = wcsrchr(game_path, '\\');
+  if (game_name)
+    game_name++;
 
 // helper macro
-#define WCSICMP(s1, s2, rval)      \
-  if (_wcsicmp((s1), (s2)) == 0) { \
-    return rval;                   \
+#define RET_GAME_IF_EQ(s1, s2, rval) \
+  if (_wcsicmp((s1), (s2)) == 0) {   \
+    return rval;                     \
   }
 
-  switch (towupper(exe[0])) {
+  switch (towupper(game_name[0])) {
   case 'A':
-    WCSICMP(exe, L"ACU.exe", L"Assassins Creed Unity");
-    WCSICMP(exe, L"ACShadows.exe", L"Assassins Creed Shadows");
-    break;
-  case 'C':
-    WCSICMP(exe, L"csgo.exe", L"CSGO");
-    WCSICMP(exe, L"cs2.exe", L"CS2");
+    RET_GAME_IF_EQ(game_name, L"ACU.exe", L"AC Unity");
     break;
   case 'F':
-    WCSICMP(exe, L"FortniteClient-Win64-Shipping.exe", L"Fortnite")
-    WCSICMP(exe, L"FortniteClient-Win64-Shipping_EAC_EOS.exe", L"Fortnite");
-    WCSICMP(exe, L"FortniteLauncher.exe", L"Fortnite");
-    WCSICMP(exe, L"FC26.exe", L"FC26");
-    WCSICMP(exe, L"FC26_Trial.exe", L"FC26");
-    WCSICMP(exe, L"FC25.exe", L"FC25");
-    WCSICMP(exe, L"FC24.exe", L"FC24");
-    WCSICMP(exe, L"FIFA23.exe", L"FIFA23");
-    WCSICMP(exe, L"FIFA22.exe", L"FIFA22");
+    RET_GAME_IF_EQ(game_name, L"FortniteClient-Win64-Shipping.exe", L"Fortnite");
+    RET_GAME_IF_EQ(game_name, L"FortniteClient-Win64-Shipping_EAC_EOS.exe", L"Fortnite");
+    RET_GAME_IF_EQ(game_name, L"FortniteLauncher.exe", L"Fortnite");
+    RET_GAME_IF_EQ(game_name, L"FC26_Trial.exe", L"FC26");
     break;
   case 'G':
-    WCSICMP(exe, L"GTA5_Enhanced.exe", L"GTA5");
-    WCSICMP(exe, L"GTAV.exe", L"GTA5");
-    WCSICMP(exe, L"GTA5.exe", L"GTA5");
-    break;
-  case 'S':
-    WCSICMP(exe, L"Skate.exe", L"Skate");
+    RET_GAME_IF_EQ(game_name, L"GTA5_Enhanced.exe", L"GTA5");
+    RET_GAME_IF_EQ(game_name, L"GTAV.exe", L"GTA5");
     break;
   case 'V':
-    WCSICMP(exe, L"VALORANT.exe", L"Valorant");
-    WCSICMP(exe, L"VALORANT-Win64-Shipping.exe", L"Valorant");
+    RET_GAME_IF_EQ(game_name, L"VALORANT-Win64-Shipping.exe", L"Valorant");
     break;
   }
 
-#undef WCSICMP
+#undef RET_GAME_IF_EQ
 
-  return exe;
+  wchar_t *ext = wcsrchr(game_name, L'.');
+  if (ext && _wcsicmp(ext, L".exe") == 0)
+    *ext = L'\0';
+
+  return game_name;
 
 error:
   puts("error getting game name");
   return L"unknown";
 }
 
-void move_new_clips(const wchar_t *path, HANDLE *hDir, int delay, const char *argv0) {
+void move_new_clips(const wchar_t *path, int delay, const char *argv0) {
+  HANDLE hDir = CreateFileW(path,
+                            FILE_LIST_DIRECTORY,
+                            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                            NULL,
+                            OPEN_EXISTING,
+                            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED,
+                            NULL);
+
+  if (hDir == INVALID_HANDLE_VALUE) {
+    wprintf(L"Failed to open %ls. Exiting...\n", path);
+    Sleep(2000);
+    return;
+  }
+
   BYTE buffer[4096];
   DWORD bytes_returned;
   OVERLAPPED ovl = {0};
   HANDLE hEvent = CreateEventW(NULL, FALSE, FALSE, NULL);
   ovl.hEvent = hEvent;
 
+  wprintf(L"Watching %ls...\n\n", path);
+
   while (1) {
-    if (!ReadDirectoryChangesW(*hDir, buffer, sizeof(buffer), FALSE, FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_SIZE, &bytes_returned, &ovl, NULL)) {
+    if (!ReadDirectoryChangesW(hDir, buffer, sizeof(buffer), FALSE, FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_SIZE, &bytes_returned, &ovl, NULL)) {
       break;
     }
 
@@ -146,7 +149,7 @@ void move_new_clips(const wchar_t *path, HANDLE *hDir, int delay, const char *ar
 
         if (fni->Action == FILE_ACTION_ADDED) {
           wchar_t out_path[MAX_PATH];
-          swprintf_s(out_path, MAX_PATH, L"%ls\\%ls\\%ls", path, get_game_name(), fni->FileName);
+          swprintf_s(out_path, MAX_PATH, L"%ls\\%ls\\%ls", path, get_current_game(), fni->FileName);
           wchar_t clip_path[MAX_PATH];
           swprintf_s(clip_path, _countof(clip_path), L"%ls\\%ls", path, fni->FileName);
 
@@ -154,9 +157,9 @@ void move_new_clips(const wchar_t *path, HANDLE *hDir, int delay, const char *ar
             if (delay > 0)
               Sleep(delay);
             if (MoveFileW(clip_path, out_path)) {
-              wprintf(L"moved clip to %ls\n", out_path);
+              wprintf(L"Moved clip to %ls\n", out_path);
             } else {
-              wprintf(L"moving clip failed. try increasing the delay by ~100 (./%hs %ls %d)\n", argv0, path, delay + 100);
+              wprintf(L"Moving clip failed. Try a higher move delay (%hs %ls %d)\n", argv0, path, delay + 100);
             }
           }
         }
@@ -169,7 +172,7 @@ void move_new_clips(const wchar_t *path, HANDLE *hDir, int delay, const char *ar
   }
 }
 
-int to_int(const char *s) {
+int string_to_int(const char *s) {
   if (!s || *s == '\0') {
     return -1;
   }
@@ -187,47 +190,51 @@ int to_int(const char *s) {
   return num;
 }
 
-int main(int argc, char **argv) {
-  printf("clipmover %s by sebii16 (github.com/sebii16)\n\n", VERSION);
+int file_exists(const wchar_t *path) {
+  DWORD attr = GetFileAttributesW(path);
+  return (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY));
+}
 
-  if (argc < 2) {
-    printf("no directory defined. use %s <path>\n", argv[0]);
-    SLEEP2S();
-    return 1;
-  }
+int main(int argc, char **argv) {
+  printf("Clipmover %s by sebii16 (github.com/sebii16)\n\n", VERSION);
 
   int delay_ms = DEFAULT_MOVE_DELAY;
+  wchar_t clip_dir[MAX_PATH];
+  int config_exists = 1;
 
-  if (argc >= 3) {
-    delay_ms = to_int(argv[2]);
-    if (delay_ms == -1) {
-      delay_ms = DEFAULT_MOVE_DELAY;
+  if (!file_exists(CONFIG_FILE)) {
+    config_exists = 0;
+    wprintf(L"%ls doesn't exist. Trying to create...\n", CONFIG_FILE);
+    printf("Enter your clip folder: ");
+
+    if (wscanf(L"%259ls", clip_dir) == 1) {
+      FILE *fp = _wfopen(CONFIG_FILE, L"w");
+      if (!fp) {
+        perror("_wfopen");
+        Sleep(2000);
+        return 1;
+      }
+
+      fwprintf(fp, L"[clipmover]\nclip_folder = %ls\nmove_delay = %d", clip_dir, delay_ms);
+      fclose(fp);
+      wprintf(L"%ls has been created\n\n", CONFIG_FILE);
     }
   }
 
-  wchar_t wpath[MAX_PATH];
-  if (!MultiByteToWideChar(CP_UTF8, 0, argv[1], -1, wpath, _countof(wpath))) {
-    puts("fatal error occurred");
-    SLEEP2S();
-    return 1;
+  if (config_exists) {
+    delay_ms = GetPrivateProfileIntW(L"clipmover", L"move_delay", DEFAULT_MOVE_DELAY, CONFIG_FILE);
+    GetPrivateProfileStringW(L"clipmover", L"clip_folder", L"", clip_dir, _countof(clip_dir), CONFIG_FILE);
+    wprintf(L"Loaded %ls\n", CONFIG_FILE);
   }
 
-  HANDLE hDir = CreateFileW(wpath, FILE_LIST_DIRECTORY, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, NULL);
-  if (hDir == INVALID_HANDLE_VALUE) {
-    wprintf(L"failed to open directory %ls (invalid?)\n", wpath);
-    SLEEP2S();
-    return 1;
-  }
-
-  wprintf(L"clip directory: %ls\n", wpath);
-  printf("move delay: %dms\n", delay_ms);
   if (delay_ms < DEFAULT_MOVE_DELAY) {
-    printf("warning: if you have a bad pc the delay you set might be too low, %dms+ is recommended\n", DEFAULT_MOVE_DELAY);
+    printf("Warning: The delay between clip detection and clip moving is set to %dms, this value might be too low\n\n", delay_ms);
   }
+  puts("Make sure OBS Replay Buffer is turned on\n");
 
-  putc('\n', stdout);
-
-  move_new_clips(wpath, &hDir, delay_ms, argv[0]);
+  move_new_clips(clip_dir, delay_ms, argv[0]);
 
   return 0;
+
+  (void)argc;
 }
