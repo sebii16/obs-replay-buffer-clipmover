@@ -63,11 +63,12 @@ const wchar_t *get_current_game(void) {
   }
 
   wchar_t game_path[MAX_PATH];
-  if (!GetProcessImageFileNameW(hProc, game_path, _countof(game_path))) {
+  DWORD len = _countof(game_path);
+  if (!QueryFullProcessImageNameW(hProc, 0, game_path, &len)) {
     CloseHandle(hProc);
     goto error;
   }
-  game_path[_countof(game_path) - 1] = L'\0';
+  //game_path[_countof(game_path) - 1] = L'\0';
 
   CloseHandle(hProc);
 
