@@ -16,7 +16,7 @@
 
 #define DEFAULT_MOVE_DELAY 300
 #define VERSION "v1.1.0"
-#define CONFIG_FILE L".\\filemover.ini"
+#define CONFIG_FILE L".\\clipmover.ini"
 
 int create_dir(const wchar_t *clip_dir) {
   wchar_t path_copy[MAX_PATH];
@@ -205,7 +205,6 @@ int main(int argc, char **argv) {
 
   if (!file_exists(CONFIG_FILE)) {
     config_exists = 0;
-    wprintf(L"%ls doesn't exist. Trying to create...\n", CONFIG_FILE);
     printf("Enter your clip folder: ");
 
     if (wscanf(L"%259ls", clip_dir) != 1) {
@@ -213,6 +212,7 @@ int main(int argc, char **argv) {
       Sleep(2000);
       return 1;
     }
+    wprintf(L"Creating %ls...\n", CONFIG_FILE);
 
     FILE *fp = _wfopen(CONFIG_FILE, L"w");
     if (!fp) {
